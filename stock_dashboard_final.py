@@ -80,19 +80,52 @@ start_date = st.date_input("Start Date", datetime(2023,1,1))
 end_date = st.date_input("End Date", datetime.today())
 
 # ---------------- LOAD DATA (FAST CACHE) ----------------
+# ---------------- LOAD DATA (FAST + RELIABLE CACHE) ----------------
 @st.cache_data(ttl=60)
-def load_data(ticker):
-    data = yf.download(ticker, start=start_date, end=end_date, interval="1d")
+def load_data(ticker, start_date, end_date):
+
+    import time
+
+    data = pd.DataFrame()
+
+    # Retry logic (3 attempts)
+    for i in range(3):
+        try:
+            data = yf.download(
+                ticker,
+                start=start_date,
+                end=end_date,
+                interval="1d",
+                progress=False,
+                threads=True
+            )
+
+            if not data.empty:
+                break
+
+        except Exception as e:
+            time.sleep(1)
+
+    # If still empty → return
+    if data.empty:
+        return data
+
+    # Reset index
     data.reset_index(inplace=True)
 
-    # Fix multi-level columns
+    # Fix multi-level columns (VERY IMPORTANT)
     if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.droplevel(1)
+        data.columns = data.columns.get_level_values(0)
+
+    # Ensure Date column exists
+    if "Date" not in data.columns:
+        data.rename(columns={data.columns[0]: "Date"}, inplace=True)
 
     return data
 
-data = load_data(ticker)
 
+# Call function
+data = load_data(ticker, start_date, end_date)
 # ---------------- CHECK DATA ----------------
 if data.empty:
     st.error("No data found!")
