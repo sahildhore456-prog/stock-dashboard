@@ -13,7 +13,7 @@ st.set_page_config(page_title="Stock Dashboard", layout="wide")
 st.title("📊 Smart Stock Market Dashboard (Live)")
 st.markdown("Real-time NIFTY 50 Analysis 🚀")
 
-# ---------------- FETCH NIFTY 50 (API) ----------------
+# ---------------- FETCH NIFTY 50 ----------------
 @st.cache_data
 def get_nifty50_list():
     try:
@@ -31,13 +31,10 @@ def get_nifty50_list():
         return nifty_dict
 
     except:
-        # Fallback (important)
         return {
             "Reliance": "RELIANCE.NS",
             "TCS": "TCS.NS",
-            "HDFC Bank": "HDFCBANK.NS",
-            "Infosys": "INFY.NS",
-            "ICICI Bank": "ICICIBANK.NS"
+            "Infosys": "INFY.NS"
         }
 
 nifty50 = get_nifty50_list()
@@ -69,7 +66,12 @@ def load_data(ticker, start, end):
 
     for i in range(3):
         try:
-            data = yf.download(ticker, start=start, end=end, progress=False)
+            data = yf.download(
+                ticker,
+                start=start,
+                end=end,
+                progress=False
+            )
             if not data.empty:
                 break
         except:
@@ -78,13 +80,28 @@ def load_data(ticker, start, end):
     if data.empty:
         return data
 
+    # Reset index
     data.reset_index(inplace=True)
+
+    # Fix MultiIndex issue (IMPORTANT)
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    # Ensure Date column
+    if "Date" not in data.columns:
+        data.rename(columns={data.columns[0]: "Date"}, inplace=True)
+
     return data
 
 data = load_data(ticker, start_date, end_date)
 
+# ---------------- CHECK DATA ----------------
 if data.empty:
     st.error("No data found!")
+    st.stop()
+
+if 'Close' not in data.columns:
+    st.error(f"Column error: {data.columns}")
     st.stop()
 
 # ---------------- METRICS ----------------
@@ -129,7 +146,7 @@ if data['MA20'].iloc[-1] > data['MA50'].iloc[-1]:
 else:
     st.error("📉 Downtrend (Bearish)")
 
-# ---------------- RSI (EMA VERSION) ----------------
+# ---------------- RSI (EMA) ----------------
 delta = data['Close'].diff()
 
 gain = delta.clip(lower=0)
