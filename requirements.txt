@@ -3,5 +3,6 @@ pandas
 yfinance
 plotly
 scikit-learn
+numpy
 lxml
 html5lib
