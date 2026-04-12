@@ -40,28 +40,36 @@ start_date = st.date_input("Start Date", datetime(2023,1,1))
 end_date = st.date_input("End Date", datetime.today())
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=60)
-def load_data(ticker, start, end):
-    data = yf.download(ticker, start=start, end=end, progress=False)
+@st.cache_data(ttl=86400)
+def get_nifty50():
+    import requests
 
-    if data.empty:
-        return data
+    try:
+        url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
 
-    data.reset_index(inplace=True)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br"
+        }
 
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
+        session = requests.Session()
+        session.get("https://www.nseindia.com", headers=headers)  # 🔥 important
 
-    if "Date" not in data.columns:
-        data.rename(columns={data.columns[0]: "Date"}, inplace=True)
+        response = session.get(url, headers=headers)
+        data = response.json()
 
-    return data
+        nifty_dict = {}
 
-data = load_data(ticker, start_date, end_date)
+        for item in data['data']:
+            name = item['symbol']
+            nifty_dict[name] = name + ".NS"
 
-if data.empty:
-    st.error("No data found")
-    st.stop()
+        return nifty_dict
+
+    except Exception as e:
+        st.warning("⚠️ NSE API failed, retrying...")
+        return {}
 
 # ---------------- INDICATORS ----------------
 data['MA20'] = data['Close'].rolling(20).mean()
