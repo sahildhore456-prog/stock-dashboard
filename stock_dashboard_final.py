@@ -6,6 +6,7 @@ import plotly.express as px
 from datetime import datetime
 import numpy as np
 from sklearn.linear_model import LinearRegression
+import requests
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Stock Dashboard", layout="wide")
@@ -13,15 +14,39 @@ st.set_page_config(page_title="AI Stock Dashboard", layout="wide")
 st.title("📊 AI Stock Market Dashboard")
 st.markdown("Live Analysis + Smart Recommendations 🚀")
 
-# ---------------- NIFTY 50 FETCH ----------------
-@st.cache_data
+# ---------------- NIFTY 50 (DYNAMIC + SAFE) ----------------
+@st.cache_data(ttl=86400)
 def get_nifty50():
-    url = "https://en.wikipedia.org/wiki/NIFTY_50"
-    table = pd.read_html(url)[1]
-    return {
-        row['Company Name']: row['Symbol'] + ".NS"
-        for _, row in table.iterrows()
+    url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept-Language": "en-US,en;q=0.9",
     }
+
+    try:
+        session = requests.Session()
+        session.get("https://www.nseindia.com", headers=headers, timeout=5)
+
+        response = session.get(url, headers=headers, timeout=5)
+        data = response.json()
+
+        nifty_dict = {
+            item['symbol']: item['symbol'] + ".NS"
+            for item in data['data']
+        }
+
+        return nifty_dict
+
+    except:
+        st.warning("⚠️ Live NSE failed → Using backup")
+        return {
+            "RELIANCE": "RELIANCE.NS",
+            "TCS": "TCS.NS",
+            "INFY": "INFY.NS",
+            "HDFCBANK": "HDFCBANK.NS",
+            "ICICIBANK": "ICICIBANK.NS"
+        }
 
 nifty50 = get_nifty50()
 
@@ -39,37 +64,33 @@ ticker = nifty50[stock_name]
 start_date = st.date_input("Start Date", datetime(2023,1,1))
 end_date = st.date_input("End Date", datetime.today())
 
+if start_date > end_date:
+    st.error("Invalid Date Range")
+    st.stop()
+
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=86400)
-def get_nifty50():
-    import requests
+@st.cache_data(ttl=60)
+def load_data(ticker, start, end):
+    data = yf.download(ticker, start=start, end=end, progress=False)
 
-    try:
-        url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
+    if data.empty:
+        return data
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br"
-        }
+    data.reset_index(inplace=True)
 
-        session = requests.Session()
-        session.get("https://www.nseindia.com", headers=headers)  # 🔥 important
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
 
-        response = session.get(url, headers=headers)
-        data = response.json()
+    if "Date" not in data.columns:
+        data.rename(columns={data.columns[0]: "Date"}, inplace=True)
 
-        nifty_dict = {}
+    return data
 
-        for item in data['data']:
-            name = item['symbol']
-            nifty_dict[name] = name + ".NS"
+data = load_data(ticker, start_date, end_date)
 
-        return nifty_dict
-
-    except Exception as e:
-        st.warning("⚠️ NSE API failed, retrying...")
-        return {}
+if data.empty:
+    st.error("No data found")
+    st.stop()
 
 # ---------------- INDICATORS ----------------
 data['MA20'] = data['Close'].rolling(20).mean()
@@ -130,7 +151,7 @@ else:
     st.info("🟡 HOLD")
 
 # ---------------- ML PREDICTION ----------------
-st.subheader("📈 Price Prediction")
+st.subheader("📈 Prediction")
 
 data['Days'] = np.arange(len(data))
 
@@ -139,16 +160,16 @@ model.fit(data[['Days']], data['Close'])
 
 pred = model.predict([[len(data)+1]])[0]
 
-st.metric("Tomorrow Prediction", f"₹ {round(pred,2)}")
+st.metric("Tomorrow Price", f"₹ {round(pred,2)}")
 
 # ---------------- TRENDING STOCKS ----------------
-st.subheader("🔥 Trending Stocks (Top Gainers Today)")
+st.subheader("🔥 Trending Stocks")
 
 @st.cache_data(ttl=300)
-def get_trending():
+def get_trending(nifty_dict):
     results = []
 
-    for name, tick in list(nifty50.items())[:20]:  # limit for speed
+    for name, tick in list(nifty_dict.items())[:15]:
         try:
             df = yf.download(tick, period="5d", progress=False)
 
@@ -162,11 +183,9 @@ def get_trending():
             continue
 
     df_res = pd.DataFrame(results, columns=["Stock", "Change %"])
-    df_res = df_res.sort_values(by="Change %", ascending=False).head(5)
+    return df_res.sort_values(by="Change %", ascending=False).head(5)
 
-    return df_res
-
-trending = get_trending()
+trending = get_trending(nifty50)
 
 st.dataframe(trending, use_container_width=True)
 
@@ -174,5 +193,5 @@ st.dataframe(trending, use_container_width=True)
 st.download_button("📥 Download Data", data.to_csv(index=False))
 
 # ---------------- REFRESH ----------------
-if st.sidebar.button("Refresh"):
+if st.sidebar.button("🔄 Refresh"):
     st.rerun()
