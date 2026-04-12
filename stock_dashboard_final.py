@@ -119,16 +119,70 @@ fig1 = px.line(data, x="Date", y="Close")
 st.plotly_chart(fig1, use_container_width=True)
 
 # ---------------- CANDLESTICK ----------------
-st.subheader("🕯️ Candlestick Chart")
-fig2 = go.Figure(data=[go.Candlestick(
+st.subheader("🕯️ Advanced Candlestick Chart")
+
+fig2 = go.Figure()
+
+# Candlestick
+fig2.add_trace(go.Candlestick(
     x=data['Date'],
     open=data['Open'],
     high=data['High'],
     low=data['Low'],
-    close=data['Close']
-)])
-st.plotly_chart(fig2, use_container_width=True)
+    close=data['Close'],
+    increasing_line_color='#00FFAA',
+    decreasing_line_color='#FF4D4D',
+    name="Price"
+))
 
+# Moving Averages
+fig2.add_trace(go.Scatter(
+    x=data['Date'],
+    y=data['MA20'],
+    line=dict(color='orange', width=1.5),
+    name='MA20'
+))
+
+fig2.add_trace(go.Scatter(
+    x=data['Date'],
+    y=data['MA50'],
+    line=dict(color='cyan', width=1.5),
+    name='MA50'
+))
+
+# Volume (secondary axis)
+fig2.add_trace(go.Bar(
+    x=data['Date'],
+    y=data['Volume'],
+    name='Volume',
+    yaxis='y2',
+    opacity=0.3
+))
+
+# Layout (PRO LEVEL)
+fig2.update_layout(
+    template="plotly_dark",
+    height=600,
+    xaxis_rangeslider_visible=True,
+    
+    yaxis=dict(title="Price"),
+    yaxis2=dict(
+        title="Volume",
+        overlaying='y',
+        side='right',
+        showgrid=False
+    ),
+
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    )
+)
+
+st.plotly_chart(fig2, use_container_width=True)
 # ---------------- MOVING AVERAGE ----------------
 data['MA20'] = data['Close'].rolling(20).mean()
 data['MA50'] = data['Close'].rolling(50).mean()
